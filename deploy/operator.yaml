@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: j-op
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: j-op
+  template:
+    metadata:
+      labels:
+        name: j-op
+    spec:
+      serviceAccountName: j-op
+      containers:
+        - name: j-op
+          # Replace this with the built image name
+          image: REPLACE_IMAGE
+          command:
+          - j-op
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "j-op"
