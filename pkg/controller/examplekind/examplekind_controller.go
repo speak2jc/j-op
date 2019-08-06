@@ -6,13 +6,14 @@ import (
 	"reflect"
 
 	examplev1alpha1 "github.com/speak2jc/j-op/pkg/apis/example/v1alpha1"
+	keevav1alpha1 "github.com/speak2jc/k-op/pkg/apis/example/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -99,79 +100,81 @@ func (r *ReconcileExamplekind) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
+	// Check if the deployment already exists, if not create a new one
+	found := &appsv1.Deployment{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
+	if err != nil && errors.IsNotFound(err) {
+		// Define a new deployment
+		dep := r.newDeploymentForCR(instance)
+		log.Printf("Creating a new Deployment %s/%s\n", dep.Namespace, dep.Name)
+		err = r.client.Create(context.TODO(), dep)
+		if err != nil {
+			log.Printf("Failed to create new Deployment: %v\n", err)
+			return reconcile.Result{}, err
+		}
 
+		// Define a new Keevakind
+		kkind := r.newKeevaForCR(instance)
+		log.Printf("Creating a new Deployment %s/%s\n", kkind.Namespace, kkind.Name)
+		err = r.client.Create(context.TODO(), kkind)
+		if err != nil {
+			log.Printf("Failed to create new Keevakind: %v\n", err)
+			return reconcile.Result{}, err
+		}
 
-  	// Check if the deployment already exists, if not create a new one
-  found := &appsv1.Deployment{}
-  err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
-  if err != nil && errors.IsNotFound(err) {
-  	// Define a new deployment
-  	dep := r.newDeploymentForCR(instance)
-  	log.Printf("Creating a new Deployment %s/%s\n", dep.Namespace, dep.Name)
-  	err = r.client.Create(context.TODO(), dep)
-  	if err != nil {
-  		log.Printf("Failed to create new Deployment: %v\n", err)
-  		return reconcile.Result{}, err
-  	}
-  	// Deployment created successfully - return and requeue
-  	return reconcile.Result{Requeue: true}, nil
-  } else if err != nil {
-  	log.Printf("Failed to get Deployment: %v\n", err)
-  	return reconcile.Result{}, err
-  }
+		// Deployment created successfully - return and requeue
+		return reconcile.Result{Requeue: true}, nil
+	} else if err != nil {
+		log.Printf("Failed to get Deployment: %v\n", err)
+		return reconcile.Result{}, err
+	}
 
-  // Ensure the deployment Count is the same as the spec
-  count := instance.Spec.Count
-  if *found.Spec.Replicas != count {
-  	found.Spec.Replicas = &count
-  	err = r.client.Update(context.TODO(), found)
-  	if err != nil {
-  		log.Printf("Failed to update Deployment: %v\n", err)
-  		return reconcile.Result{}, err
-  	}
-  	// Spec updated - return and requeue
-  	return reconcile.Result{Requeue: true}, nil
-  }
+	// Ensure the deployment Count is the same as the spec
+	count := instance.Spec.Count
+	if *found.Spec.Replicas != count {
+		found.Spec.Replicas = &count
+		err = r.client.Update(context.TODO(), found)
+		if err != nil {
+			log.Printf("Failed to update Deployment: %v\n", err)
+			return reconcile.Result{}, err
+		}
+		// Spec updated - return and requeue
+		return reconcile.Result{Requeue: true}, nil
+	}
 
-  // List the pods for this deployment
-  podList := &corev1.PodList{}
-  labelSelector := labels.SelectorFromSet(labelsForExampleKind(instance.Name))
-  listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
-  err = r.client.List(context.TODO(), listOps, podList)
-  if err != nil {
-  	log.Printf("Failed to list pods: %v", err)
-  	return reconcile.Result{}, err
-  }
-  podNames := getPodNames(podList.Items)
+	// List the pods for this deployment
+	podList := &corev1.PodList{}
+	labelSelector := labels.SelectorFromSet(labelsForExampleKind(instance.Name))
+	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
+	err = r.client.List(context.TODO(), listOps, podList)
+	if err != nil {
+		log.Printf("Failed to list pods: %v", err)
+		return reconcile.Result{}, err
+	}
+	podNames := getPodNames(podList.Items)
 
-  // Update status.PodNames if needed
-  if !reflect.DeepEqual(podNames, instance.Status.PodNames) {
-  	instance.Status.PodNames = podNames
-  	err := r.client.Update(context.TODO(), instance)
-  	if err != nil {
-  		log.Printf("failed to update node status: %v", err)
-  		return reconcile.Result{}, err
-  	}
-  }
+	// Update status.PodNames if needed
+	if !reflect.DeepEqual(podNames, instance.Status.PodNames) {
+		instance.Status.PodNames = podNames
+		err := r.client.Update(context.TODO(), instance)
+		if err != nil {
+			log.Printf("failed to update node status: %v", err)
+			return reconcile.Result{}, err
+		}
+	}
 
-  // Update AppGroup status
-  if instance.Spec.Group != instance.Status.AppGroup {
-  	instance.Status.AppGroup = instance.Spec.Group
-  	err := r.client.Update(context.TODO(), instance)
-  	if err != nil {
-  		log.Printf("failed to update group status: %v", err)
-  		return reconcile.Result{}, err
-  	}
-  }
-
-
-
+	// Update AppGroup status
+	if instance.Spec.Group != instance.Status.AppGroup {
+		instance.Status.AppGroup = instance.Spec.Group
+		err := r.client.Update(context.TODO(), instance)
+		if err != nil {
+			log.Printf("failed to update group status: %v", err)
+			return reconcile.Result{}, err
+		}
+	}
 
 	return reconcile.Result{}, nil
 }
-
-
-
 
 // getPodNames returns the pod names of the array of pods passed in.
 func getPodNames(pods []corev1.Pod) []string {
@@ -188,7 +191,7 @@ func labelsForExampleKind(name string) map[string]string {
 }
 
 // Create newDeploymentForCR method to create a deployment.
-func (r *ReconcileExamplekind) newDeploymentForCR(m *examplev1alpha1.Examplekind) *appsv1.Deployment{
+func (r *ReconcileExamplekind) newDeploymentForCR(m *examplev1alpha1.Examplekind) *appsv1.Deployment {
 	labels := labelsForExampleKind(m.Name)
 	replicas := m.Spec.Count
 	dep := &appsv1.Deployment{
@@ -211,11 +214,11 @@ func (r *ReconcileExamplekind) newDeploymentForCR(m *examplev1alpha1.Examplekind
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
-						Image:   m.Spec.Image,
-						Name:    m.Name,
+						Image: m.Spec.Image,
+						Name:  m.Name,
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: m.Spec.Port,
-							Name:  m.Name,
+							Name:          m.Name,
 						}},
 					}},
 				},
@@ -225,5 +228,29 @@ func (r *ReconcileExamplekind) newDeploymentForCR(m *examplev1alpha1.Examplekind
 	// Set Examplekind instance as the owner and controller
 	controllerutil.SetControllerReference(m, dep, r.scheme)
 	return dep
+
+}
+
+// Create newDeploymentForCR method to create a deployment.
+func (r *ReconcileExamplekind) newKeevaForCR(m *examplev1alpha1.Examplekind) *keevav1alpha1.Keevakind {
+	//labels := labelsForExampleKind(m.Name)
+	replicas := m.Spec.Count
+	kkind := &keevav1alpha1.Keevakind{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "Keevakind",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.Name,
+			Namespace: m.Namespace,
+		},
+		Spec: keevav1alpha1.KeevakindSpec{
+			Count: replicas,
+			Group: "keeva-main",
+		},
+	}
+	// Set Examplekind instance as the owner and controller
+	//controllerutil.SetControllerReference(m, kkind, r.scheme)
+	return kkind
 
 }
