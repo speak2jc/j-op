@@ -16,10 +16,10 @@ spec:
       containers:
         - name: j-op
           # Replace this with the built image name
-          image: speak2jc/j-op:v0.0.1
+          image: speak2jc/j-op:v0.0.3
           command:
           - j-op
-          imagePullPolicy: Always
+          imagePullPolicy: Never
           env:
             - name: WATCH_NAMESPACE
               valueFrom:

@@ -236,10 +236,10 @@ func (r *ReconcileExamplekind) newKeevaForCR(m *examplev1alpha1.Examplekind) *ke
 	//labels := labelsForExampleKind(m.Name)
 	replicas := m.Spec.Count
 	kkind := &keevav1alpha1.Keevakind{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "Keevakind",
-		},
+		//TypeMeta: metav1.TypeMeta{
+		//	APIVersion: "example.keeva.com/v1alpha1",
+		//	Kind:       "Keevakind",
+		//},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      m.Name,
 			Namespace: m.Namespace,
